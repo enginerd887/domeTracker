@@ -1,25 +1,21 @@
 // Pylon_with_OpenCV.cpp
 
 /*
-    Note: Before getting started, Basler recommends reading the Programmer's Guide topic
-    in the pylon C++ API documentation that gets installed with pylon.
-    If you are upgrading to a higher major version of pylon, Basler also
-    strongly recommends reading the Migration topic in the pylon C++ API documentation.
-    This sample illustrates how to grab and process images using the CInstantCamera class and OpenCV.
-    The images are grabbed and processed asynchronously, i.e.,
-    while the application is processing a buffer, the acquisition of the next buffer is done
-    in parallel.
+Tito Fernandez
+Lynch Lab, Northwestern University
+Fingertip Force Sensor Project
 
-	OpenCV is used to demonstrate an image display, an image saving and a video recording.
-    The CInstantCamera class uses a pool of buffers to retrieve image data
-    from the camera device. Once a buffer is filled and ready,
-    the buffer can be retrieved from the camera object for processing. The buffer
-    and additional image data are collected in a grab result. The grab result is
-    held by a smart pointer after retrieval. The buffer is automatically reused
-    when explicitly released or when the smart pointer object is destroyed.
+This code accomplishes the following tasks:
+
+* Reads a Pylon-based camera (Basler Dart daA1600-60uc in this case)
+* Converts Pylon-based images to OpenCV Mats
+* Reads the input image and tracks any circular red regions found (fiducials for position tracking)
+* Determines what portion of the image is the dome region, and masks out everything else
+* Keeps track of the centroid of each red fiducial and of the main dome regions
+
+This script is based on the Pylon_with_OpenCV example available online.
 */
 
-//#include "stdafx.h"
 
 // Include files to use OpenCV API.
 #include <opencv2/core/core.hpp>
@@ -29,7 +25,6 @@
 #include "opencv2/features2d.hpp"
 #include <iostream>
 #include <cmath>
-#include <algorithm>
 #include <iterator>
 
 
@@ -50,83 +45,15 @@ using namespace std;
 
 ////////////////////////// Program Setup //////////////////////////////////////
 
-// Function Declarations
-void on_low_r_thresh_trackbar(int, void *);
-void on_high_r_thresh_trackbar(int, void *);
-void on_low_g_thresh_trackbar(int, void *);
-void on_high_g_thresh_trackbar(int, void *);
-void on_low_b_thresh_trackbar(int, void *);
-void on_high_b_thresh_trackbar(int, void *);
-string type2str(int type);
-
-
-// Globals (May need to scan through this and delete stuff)
-int low_r=30, low_g=30, low_b=30;
-int high_r=100, high_g=100, high_b=100;
-
-const int minTmax = 50;
-const int maxTmax = 1000;
-const int areaMax = 2000;
-const int convexMax = 100;
-const int circleMax = 100;
-const int inertiaMax = 100;
-
-int minTslider = 20;
-int maxTslider = 1000;
-int areaSlider = 100;
-int convexSlider = 1;
-int circleSlider = 3;
-int inertiaSlider = 1;
-
-int Imultiply = 60;
-int threshVal = 100;
-double multiplier = 60;
-double threshValue = 40;
-int counter2 = 0;
-int oldSize = 0;
-int mouseClicked = 0;
-RNG rng(12345);
-
-
-/////////////////////// Blob Detector Setup ///////////////////////////////////
-
 void display_vector(const vector<int> &v) //note the const
 {
     std::copy(v.begin(), v.end(),
         std::ostream_iterator<int>(std::cout, " "));
 }
+
 /////////////////////////// Main Program ///////////////////////////////////////
 int main(int argc, char* argv[])
 {
-
-    std::vector<KeyPoint> keypointList;
-
-    // Parameters for blob detector
-    // Setup SimpleBlobDetector parameters.
-    SimpleBlobDetector::Params params;
-
-    // Change thresholds
-    params.minThreshold = 10;
-    params.maxThreshold = 100;
-
-    // Filter by Area.
-    params.filterByArea = true;
-    params.minArea = 1000;
-    params.maxArea = 2000;
-
-    // Filter by Circularity
-    params.filterByCircularity = false;
-    params.minCircularity = 0.2;
-
-    // Filter by Convexity
-    params.filterByConvexity = false;
-    params.minConvexity = 0.87;
-
-    // Filter by Inertia
-    params.filterByInertia = false;
-    params.minInertiaRatio = 0.01;
-
-    cv::Ptr<cv::SimpleBlobDetector> detector = cv::SimpleBlobDetector::create(params);
 
     // The exit code of the sample application.
     int exitCode = 0;
@@ -173,25 +100,17 @@ int main(int argc, char* argv[])
 
 		// tracking parameter
 		int frame = 1;
-		vector<Point2f> corners, nextcorners;
-		Mat prevgrayimage;
+
     Mat im;
     Mat imAverage;
-    Mat imCurrent;
     Mat filtered;
-    Mat filtered2;
-    Mat ref;
     Mat imInv;
-    Mat edges;
-    Mat findYellow;
 
     int AvgCounter = 0;
         // Camera.StopGrabbing() is called automatically by the RetrieveResult() method
         // when c_countOfImagesToGrab images have been retrieved.
         while ( camera.IsGrabbing())
         {
-
-            double min,max;
             // Wait for an image and then retrieve it. A timeout of 5000 ms is used.
             camera.RetrieveResult( 5000, ptrGrabResult, TimeoutHandling_ThrowException);
 
@@ -211,19 +130,10 @@ int main(int argc, char* argv[])
 				// Create an OpenCV display window.
 				namedWindow( "OpenCV Display Window", CV_WINDOW_NORMAL); // other options: CV_AUTOSIZE, CV_FREERATIO
         namedWindow( "Processed Value", CV_WINDOW_NORMAL);
-        //Create TrackBars for keypoints parameters
-
-
-        // Will be used later to hold starting centroid of blobs
-        Point2f b(0.0,0.0);
-        Point startPoint = b;
-        int counter = 0;
-
 
 
         im = openCvImage;
         imAverage = openCvImage;
-        ref = Mat::zeros(im.size(),CV_32FC3);
 
 
         int countCheck = 0;
@@ -233,57 +143,27 @@ int main(int argc, char* argv[])
         Scalar color2 = Scalar(0,255,0);
         Scalar color3 = Scalar(0,0,255);
 
-        int refCounter = 0;
 
 				// Display the current image in the OpenCV display window.
 				imshow( "OpenCV Display Window", openCvImage);
-				// Define a timeout for customer's input in ms.
-				// '0' means indefinite, i.e. the next image will be displayed after closing the window.
-				// '1' means live stream
 
 				// optical flow tracking algorithm
 
 				if (frame == 1)
 				{
           //Stuff yu want to happen on the first frame only
-					//feature extraction
-					Mat image, grayimage;
-					im = openCvImage;
+
           imAverage = openCvImage;
-					cvtColor(im, grayimage, CV_BGR2GRAY); //transform to grayimage
 
-					//corner detection
-					int maxCorners = 10;
-					double qualityLevel = 0.01;
-					double minDistance = 10;
-					int blockSize = 3;
-					bool useHarrisDetector = false;
-					double k = 0.04;
-					goodFeaturesToTrack(grayimage, corners, maxCorners, qualityLevel, minDistance, Mat(), blockSize, useHarrisDetector, k);
-
-					////refine corner detection
-					//cornerSubPix(grayimage, corners, Size(5, 5), Size(-1, -1), TermCriteria(TermCriteria::COUNT + TermCriteria::EPS, 30, 0.1));
-
-					//update
-					prevgrayimage = grayimage;
-					//plot feature point
-					for (size_t i = 0; i < corners.size(); i++)
-					{
-						circle(image, corners[i], 5, cv::Scalar(255.), -1);
-					}
-
-
-					//if (waitKey(1) == 'q') break;
 				}
 
 				else
           // Stuff you want to happen every frame
 				{
 
-					Mat nextimage, nextgrayimage;
+					Mat nextimage;
           Mat mask;
 					nextimage = openCvImage;
-					cvtColor(nextimage, nextgrayimage, CV_BGR2GRAY); //transform to grayimage
 
           ////////////// Prepare Image for Computer Vision /////////////////////
           AvgCounter++;
@@ -449,61 +329,18 @@ int main(int argc, char* argv[])
 
 
           openCvImage.copyTo(drawing2,drawing);
-
-
-          if (counter2 < 1)
-          {
-            ref = drawing2.clone();
-            counter2++;
-
-          }
-          //bitwise_not(drawing,drawing);
-
-
-          //////////////// Detect and Display contacts ////////////////////////////////
-
-          //Start from the masked image provided by "drawing2"
-          //cvtColor(drawing2,drawing2,CV_BGR2GRAY);
-          //threshold(drawing2,drawing2,230,255,0);
           circle( drawing2, ContCenter, 15, color2, -1, 8, 0 );
-          //detector->detect( filtered2, keypointList2);
-          // Draw detected blobs as red circles.
-          // DrawMatchesFlags::DRAW_RICH_KEYPOINTS flag ensures
-          // the size of the circle corresponds to the size of blob
 
-          //Mat im_with_keypoints;
-          //Mat im_with_refpoints;
-          //drawKeypoints( imCurrent, keypointList, im_with_keypoints, Scalar(0,0,255), DrawMatchesFlags::DRAW_RICH_KEYPOINTS );
-          //drawKeypoints( im, keypointList2,im_with_refpoints, Scalar(255,0,0), DrawMatchesFlags::DRAW_RICH_KEYPOINTS );
-          //addWeighted(im_with_keypoints,.5,im_with_refpoints,.5,0.0,im_with_keypoints);
-          // Show blobs
-          //imshow("keypoints", im_with_keypoints );
-          //addWeighted(drawing2,.5,findYellow,.5,0.0,drawing2);
-
-
-          //imshow("threshold2",drawing);
 					//opticalflow
 					vector<uchar> status;
 					vector<float> err;
-					calcOpticalFlowPyrLK(prevgrayimage, nextgrayimage, corners, nextcorners, status, err);
 
-					//update
-					prevgrayimage = nextgrayimage;
-					corners = nextcorners;
-
-					//plot feature point
-					for (size_t i = 0; i < nextcorners.size(); i++)
-					{
-						circle(nextimage, nextcorners[i], 5, cv::Scalar(255.), -1);
-					}
           add(drawing2,drawingR,drawing2);
               // Show our image inside it.
           imshow("Processed Value",drawing2);
 					waitKey(1);
-					// if (waitKey(1) == 'q') break;
 
 				}
-				// waitKey(1);
 				frame++;
 
 
