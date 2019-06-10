@@ -1,7 +1,7 @@
 # Makefile for Basler pylon sample program
 .PHONY: all clean
 	# The program to build
-NAME       := blob
+NAME       := blobTrack
 
 # Installation directories for pylon
 PYLON_ROOT ?= /opt/pylon5
