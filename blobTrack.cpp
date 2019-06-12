@@ -310,7 +310,7 @@ int main(int argc, char* argv[])
         //////////////////////CV for red fiducials //////////////////////////
 
 
-        // Create the Trackbar for the Red Values
+        // Create the Trackbars for the Red Values
         sprintf( RedHue, "Max of Low Range");
         sprintf( rMinHigh, "Min of High Range");
         sprintf( rMaxHigh, "Max of High Range");
@@ -459,6 +459,7 @@ int main(int argc, char* argv[])
             }
           }
         }
+
         //If there are more history then current points, assign all, keep unused in memory
         else if (pointVals.size() < OldCentroids.size())
         {
@@ -498,6 +499,8 @@ int main(int argc, char* argv[])
 
 
         // Check conditions, do update accordingly
+
+        // If there are more new points than old, replace history
         if (pointVals.size() >= OldCentroids.size())
         {
           OldCentroids = pointVals;
@@ -510,6 +513,7 @@ int main(int argc, char* argv[])
           }
         }
         else
+        // Remember old history
         {
           vector<int> tempIDs;
           vector<Point> tempCentroids;
@@ -581,11 +585,14 @@ int main(int argc, char* argv[])
 
 
 
-          // Solve for pose
+          // Solve for pose, returns a rotation vector and translation vector
           cv::solvePnP(model_points, image_points, cameraMatrix, distanceCoefficients, rotation_vector, translation_vector);
+
+          // Convert the rotation vector to a rotation matrix for transformation
           Rodrigues(rotation_vector,rotationMatrix);
-          // Project a 3D point (0, 0, 1000.0) onto the image plane.
-          // We use this to draw a line in the z direction calculated.
+
+          // Project a 3D point onto the image plane, 1 in each direction
+          // We use this to draw the frame
           vector<Point3d> z_end_point3D;
           vector<Point3d> dome_center;
           vector<Point3d> x_end_point3D, y_end_point3D;
@@ -594,6 +601,7 @@ int main(int argc, char* argv[])
           vector<Point2d> y_end_point2D;
           vector<Point2d> dome_center_2D;
 
+          // THINK I CAN GET RID OF THESE 2 LINES, CHECK
           Point2d midX = Point2d((image_points[0].x + image_points[1].x)/2,(image_points[0].y+image_points[1].y)/2);
           Point2d midY = Point2d((image_points[0].x+image_points[3].x)/2, (image_points[0].y+image_points[3].y)/2);
 
@@ -612,11 +620,7 @@ int main(int argc, char* argv[])
           cv::line(drawingR,dome_center_2D[0], z_end_point2D[0], cv::Scalar(0,255,0), 3);
           cv::line(drawingR,dome_center_2D[0], x_end_point2D[0], cv::Scalar(255,0,0),3);
           cv::line(drawingR,dome_center_2D[0], y_end_point2D[0], cv::Scalar(100,0,255),3);
-          //circle( drawingR, dome_center_2D[0], 15, color2, -1, 8, 0 );
-            // cout << "Rotation Vector " << endl << rotation_vector << endl;
-            // cout << "Translation Vector" << endl << translation_vector << endl;
-            //
-            // cout <<  nose_end_point2D << endl;
+
         }
 
         if (contCount > 0)
@@ -625,6 +629,8 @@ int main(int argc, char* argv[])
         }
 
         //////////////////// CV for central portion //////////////////////////
+
+        //Isolate bright spots in the central regions
         bitwise_not(undistorted,imInv);
         cvtColor(imInv,imInv,CV_BGR2GRAY);
         GaussianBlur(imInv,filtered,Size(7,7),0,0);
@@ -668,7 +674,7 @@ int main(int argc, char* argv[])
         {
           circularity = 4*M_PI*(area[i]/(perims[i]*perims[i]));
 
-          if (-area[i] > 10000)//circularity > .6 && circularity < 1.2 && area[i] > 100000)
+          if (-area[i] > 10000)
           {
             ContCenter = Point2f(mu[i].m10/mu[i].m00, mu[i].m01/mu[i].m00);
             drawContours(drawing, hull, i, color, 2, 8, vector<Vec4i>(), 0, Point());
@@ -736,7 +742,7 @@ int main(int argc, char* argv[])
           }
         }
 
-
+        /// Determine 3D position of contacts from 2D image contacts detected ///
         vector<Point3d> trueContacts;
         for (int i=0; i < ContCenterC.size(); i++)
         {
@@ -765,24 +771,35 @@ int main(int argc, char* argv[])
 
           Mat Psd = Tsr*Prd2;
 
+          // The point in 2D space
           Mat uvPoint = (cv::Mat_<double>(3,1) << ContCenterC[i].x, ContCenterC[i].y, 1);
           Mat invCMatrix = cameraMatrix.inv();
+
+          // The undistorted 2D space
           Mat c2Prime = invCMatrix*uvPoint;
 
           double theta = acos(Psd.dot(c2Prime)/(norm(Psd)*norm(c2Prime)));
           double firstPart = norm(Psd)*cos(theta);
           double insideSqrt = pow(rd,2)-pow(norm(Psd),2)*pow(sin(theta),2);
+
+          // Distance from camera to contact
           double MagSC = firstPart+sqrt(insideSqrt);
+
+          //Scaling factor to project the undistorted 2D point into 3D space
           double s = MagSC/norm(c2Prime);
 
+          // True 3D location of the point detected
           Mat Ctrue = invCMatrix*uvPoint*s;
           trueContacts.push_back(Point3d(Ctrue.at<double>(0,0),Ctrue.at<double>(1,0),Ctrue.at<double>(2,0)));
 
 
         }
 
+        // If there are contacts, output the true points
         if (trueContacts.size() > 0)
           cout << trueContacts << endl << endl;
+
+          
         // Combine the Red fiducial detection results with the contact results
         Mat totalDrawing;
         add(drawingC,drawingR,totalDrawing);
