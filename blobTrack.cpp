@@ -92,10 +92,16 @@ Mat undistorted;
 Mat finalMat;
 Mat drawContact;
 
+// Variables and arrays for holding information from previous (old) frame
 vector<Point> OldCentroids;
 vector<int> oldIDs;
 vector<int> lifeSpans;
 vector<int> taken;
+
+// Mats to hold the rotation and translation information to
+cv::Mat rotation_vector; // Rotation in axis-angle form
+cv::Mat translation_vector;
+Mat rotationMatrix(3,3,cv::DataType<double>::type);
 
 //Colors used in the program
 Scalar color = Scalar( 255, 255,255 );
@@ -185,7 +191,7 @@ void closeContours(int morph_size, Mat& frame)
   morphologyEx(frame,frame,MORPH_CLOSE,element,Point(-1,-1),1);
 }
 
-// Function for dilating/blurring an image to a
+// Function for dilating/blurring an image to facilitate detection
 void dilateMat(int dilation_size,Mat& frame)
 {
   Mat element = getStructuringElement( MORPH_RECT,
@@ -457,7 +463,6 @@ int main(int argc, char* argv[])
         else if (pointVals.size() < OldCentroids.size())
         {
           double distances[pointVals.size()][OldCentroids.size()];
-          cout << "Lost a point!" << endl;
 
           for (int z = 0; z < pointVals.size(); z++)
           {
@@ -484,22 +489,12 @@ int main(int argc, char* argv[])
 
           for (int z = 0; z < pointVals.size(); z++)
           {
-            cout << minVals[z] << " " << minAt[z] << endl;
+
             newIDs[z] = oldIDs[minAt[z]];
           }
         }
 
-        cout << "newIDs: ";
-        for (int ii = 0; ii < newIDs.size(); ii++)
-        {
-          cout << newIDs[ii] << " ";
-        }
-        cout << "oldIDs: ";
-        for (int ii = 0; ii < oldIDs.size(); ii++)
-        {
-          cout << oldIDs[ii] << " ";
-        }
-        cout << endl;
+
 
 
         // Check conditions, do update accordingly
@@ -542,7 +537,6 @@ int main(int argc, char* argv[])
              }
 
           }
-          cout << endl;
           oldIDs = tempIDs;
           OldCentroids = tempCentroids;
         }
@@ -585,12 +579,11 @@ int main(int argc, char* argv[])
           model_points.push_back(cv::Point3d(-ledDistance/2, ledDistance/2, 0.0f));       // Left eye left corner
           model_points.push_back(cv::Point3d(ledDistance/2,ledDistance/2, 0.0f));        // Right eye right corner
 
-          cv::Mat rotation_vector; // Rotation in axis-angle form
-          cv::Mat translation_vector;
+
 
           // Solve for pose
           cv::solvePnP(model_points, image_points, cameraMatrix, distanceCoefficients, rotation_vector, translation_vector);
-
+          Rodrigues(rotation_vector,rotationMatrix);
           // Project a 3D point (0, 0, 1000.0) onto the image plane.
           // We use this to draw a line in the z direction calculated.
           vector<Point3d> z_end_point3D;
@@ -724,7 +717,7 @@ int main(int argc, char* argv[])
 
         for( int i = 0; i< contactContours.size(); i++ )
         {
-          approxPolyDP(contactContours[i],contactContours[i],3,true);
+          approxPolyDP(contactContours[i],contactContours[i],1,true);
           muC[i] = moments(contactContours[i],false);
           areaC[i] = contourArea(contactContours[i],true);
           perimC[i] = arcLength(contactContours[i],true);
@@ -733,15 +726,63 @@ int main(int argc, char* argv[])
 
           double circularityC = -4*M_PI*(areaC[i]/(perimC[i]*perimC[i]));
 
-          cout << "areas: " << areaC[i] << endl;
-          if (-areaC[i] > 600 && circularityC > .5 && circularityC < 1.3)
+          if (-areaC[i] > 500 && circularityC > .5 && circularityC < 1.3)
           {
             //drawContours( drawingC, contactContours, i, color2, 3, 8, hierarchy, 0, Point() );
             circle( drawingC, ContCenterC[i], 8, color3, -1, 8, 0);
             circle( drawingC, centers[i], (int)radius[i], color2, 3 );
+
+            cout << endl << endl;
           }
         }
 
+
+        vector<Point3d> trueContacts;
+        for (int i=0; i < ContCenterC.size(); i++)
+        {
+          // Define some transformation matrices and points
+          Mat Tsr;
+          Mat Trd;
+          Mat Pc;
+
+          double rd = 38.1; // mm radius of dome
+          double h = 9.5; // mm distance from reference plane to dome frame
+          Mat Prd = (cv::Mat_<double>(3,1) << 0, 0, h);
+          Mat Prd2 = (cv::Mat_<double>(4,1)<<0,0,h,1);
+          Mat Identity = (Mat_<double>(3,3) << 1, 0, 0, 0, 1, 0, 0, 0, 1);
+
+          // Define transformation matrix from camera frame to reference frame
+          Mat TransformBottom = (cv::Mat_<double>(1,4) << 0, 0, 0, 1);
+
+
+          hconcat(rotationMatrix,translation_vector,Tsr);
+          //vconcat(Tsr,TransformBottom, Tsr);
+
+          // Define transformation matrix from reference frame to dome frame
+          hconcat(Identity,Prd,Trd);
+          //vconcat(Trd,TransformBottom, Trd);
+
+
+          Mat Psd = Tsr*Prd2;
+
+          Mat uvPoint = (cv::Mat_<double>(3,1) << ContCenterC[i].x, ContCenterC[i].y, 1);
+          Mat invCMatrix = cameraMatrix.inv();
+          Mat c2Prime = invCMatrix*uvPoint;
+
+          double theta = acos(Psd.dot(c2Prime)/(norm(Psd)*norm(c2Prime)));
+          double firstPart = norm(Psd)*cos(theta);
+          double insideSqrt = pow(rd,2)-pow(norm(Psd),2)*pow(sin(theta),2);
+          double MagSC = firstPart+sqrt(insideSqrt);
+          double s = MagSC/norm(c2Prime);
+
+          Mat Ctrue = invCMatrix*uvPoint*s;
+          trueContacts.push_back(Point3d(Ctrue.at<double>(0,0),Ctrue.at<double>(1,0),Ctrue.at<double>(2,0)));
+
+
+        }
+
+        if (trueContacts.size() > 0)
+          cout << trueContacts << endl << endl;
         // Combine the Red fiducial detection results with the contact results
         Mat totalDrawing;
         add(drawingC,drawingR,totalDrawing);
