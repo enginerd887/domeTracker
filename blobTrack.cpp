@@ -107,7 +107,7 @@ Mat rotationMatrix(3,3,cv::DataType<double>::type);
 Scalar color = Scalar( 255, 255,255 );
 Scalar color2 = Scalar(100,0,255);
 Scalar color3 = Scalar(0,255,0);
-
+Scalar color4 = Scalar(100,100,100);
 // Variables for Camera setting sliders
 
 char ExpString[50];
@@ -120,21 +120,46 @@ const int maxContact = 255;
 
 double targetExposure = 23000.0;
 double targetBlack = 2;
-double targetContact = 220;
+double targetContact = 234;
 
 int exp_slider = 23000;
 int black_slider = 2;
-int contact_slider = 220;
+int contact_slider = 234;
 
 
 Mat cameraMatrix = Mat::eye(3,3, CV_64F);
 Mat distanceCoefficients;
+Mat CtrueDome;
+int touchCounter = 1;
+bool writing = false;
 ///////////////////// Function Declarations ///////////////////////////////////
 
 static void on_trackbarRed( int, void* );
 static void on_trackbarExp( int, void* );
 static void on_trackbarBlack( int, void* );
 static void on_trackbarContact( int, void*);
+
+// Function for writing to a file
+void write2File(Mat& CtrueDome, bool writing) {
+  char fileName[50];
+  sprintf(fileName,"point%d.txt",touchCounter);
+  ofstream myfile;
+  myfile.open(fileName, ofstream::app);
+
+  myfile << CtrueDome << "\n";
+  myfile.close();
+}
+
+// Function for writing to a file
+void writeTsd(Mat& Tsr) {
+  char fileName[50];
+  sprintf(fileName,"Ytest7.txt");
+  ofstream myfile;
+  myfile.open(fileName, ofstream::app);
+
+  myfile << Tsr << "\n\n";
+  myfile.close();
+}
 
 // Function for loading camera intrinsic parameters from text file
 bool loadCameraCalibration(Mat& cameraMatrix, Mat& distanceCoefficients)
@@ -303,8 +328,6 @@ int main(int argc, char* argv[])
 
         // use the intrinsic camera parameters to correct image
         undistorted = openCvImage;
-        //undistort(openCvImage,undistorted, cameraMatrix,distanceCoefficients);
-
         imshow( "OpenCV Display Window", undistorted);
 
         //////////////////////CV for red fiducials //////////////////////////
@@ -576,12 +599,13 @@ int main(int argc, char* argv[])
           // 3D model points.
           std::vector<cv::Point3d> model_points;
           float ledDistance = 25.00f; // in mm
-
+          float dFrameOffset = 5.00f; // in mm. Offset from reference plane to dome center of curvature
           //As written, these points set the origin of the dome frame at the center of its base
-          model_points.push_back(cv::Point3d(-ledDistance/2, -ledDistance/2, 0.0f));               // Nose tip
-          model_points.push_back(cv::Point3d(ledDistance/2,-ledDistance/2,0.0f));          // Chin
-          model_points.push_back(cv::Point3d(-ledDistance/2, ledDistance/2, 0.0f));       // Left eye left corner
-          model_points.push_back(cv::Point3d(ledDistance/2,ledDistance/2, 0.0f));        // Right eye right corner
+          model_points.push_back(cv::Point3d(-ledDistance/2, -ledDistance/2, dFrameOffset));
+          model_points.push_back(cv::Point3d(ledDistance/2,-ledDistance/2, dFrameOffset));
+          model_points.push_back(cv::Point3d(-ledDistance/2, ledDistance/2, dFrameOffset));
+          model_points.push_back(cv::Point3d(ledDistance/2,ledDistance/2,dFrameOffset));
+
 
 
 
@@ -720,6 +744,8 @@ int main(int argc, char* argv[])
         double circularityC;
 
         Mat drawingC = Mat::zeros( mask.size(), CV_8UC3 );
+        int contactCount = 0;
+        vector<Point2f> ContCenterReal;
 
         for( int i = 0; i< contactContours.size(); i++ )
         {
@@ -735,24 +761,65 @@ int main(int argc, char* argv[])
           if (-areaC[i] > 500 && circularityC > .5 && circularityC < 1.3)
           {
             //drawContours( drawingC, contactContours, i, color2, 3, 8, hierarchy, 0, Point() );
-            circle( drawingC, ContCenterC[i], 8, color3, -1, 8, 0);
+            circle( drawingC, ContCenterC[i], 4, color3, -1, 8, 0);
             circle( drawingC, centers[i], (int)radius[i], color2, 3 );
+            ContCenterReal.push_back(Point2f(ContCenterC[i]));
 
-            cout << endl << endl;
+            //cout << endl << endl;
+
           }
         }
 
         /// Determine 3D position of contacts from 2D image contacts detected ///
         vector<Point3d> trueContacts;
-        for (int i=0; i < ContCenterC.size(); i++)
+        vector<Point2f> undistortedConts;
+        //cout << ContCenterReal << endl;
+        if (ContCenterReal.size() > 0)
         {
+          undistortPoints(ContCenterReal,undistortedConts,cameraMatrix,distanceCoefficients);
+          //cout << ContCenterReal << endl;
+        }
+
+        if (undistortedConts.size() > 0)
+        {
+          Mat contacts;
+
+
+          //hconcat(Mat(ContCenterReal),oneVals,contacts);
+          //cout << Mat(ContCenterReal)*cameraMatrix << endl;
+        }
+
+        Mat contacts;
+
+        Mat Tsr;
+        // Define transformation matrix from camera frame to reference frame
+        Mat TransformBottom = (cv::Mat_<double>(1,4) << 0, 0, 0, 1);
+
+
+        hconcat(rotationMatrix,translation_vector,Tsr);
+        vconcat(Tsr,TransformBottom, Tsr);
+        cout << Tsr << endl << endl;
+        writeTsd(Tsr);
+
+        for (int i=0; i < ContCenterReal.size(); i++)
+        {
+          Mat contactPixels;
+          Mat contactPixels2D;
+          Mat tempContact = (cv::Mat_<double>(1,3) << undistortedConts[i].x,undistortedConts[i].y,1);
+          transpose(tempContact,tempContact);
+          contactPixels = cameraMatrix*tempContact;
+          transpose(contactPixels,contactPixels);
+
+          contacts.push_back(contactPixels);
+          hconcat(contactPixels.col(0),contactPixels.col(1),contactPixels2D);
+          circle( drawingC, Point2f(contactPixels2D), 4, color4, -1, 8, 0);
           // Define some transformation matrices and points
-          Mat Tsr;
+
           Mat Trd;
           Mat Pc;
 
-          double rd = 38.1; // mm radius of dome
-          double h = 9.5; // mm distance from reference plane to dome frame
+          double rd = 38.1/2.0; // mm radius of dome
+          double h = 0; // mm distance from reference plane to dome frame
           Mat Prd = (cv::Mat_<double>(3,1) << 0, 0, h);
           Mat Prd2 = (cv::Mat_<double>(4,1)<<0,0,h,1);
           Mat Identity = (Mat_<double>(3,3) << 1, 0, 0, 0, 1, 0, 0, 0, 1);
@@ -762,44 +829,65 @@ int main(int argc, char* argv[])
 
 
           hconcat(rotationMatrix,translation_vector,Tsr);
-          //vconcat(Tsr,TransformBottom, Tsr);
+          vconcat(Tsr,TransformBottom, Tsr);
 
           // Define transformation matrix from reference frame to dome frame
           hconcat(Identity,Prd,Trd);
-          //vconcat(Trd,TransformBottom, Trd);
+          vconcat(Trd,TransformBottom, Trd);
 
 
           Mat Psd = Tsr*Prd2;
+          Psd = (cv::Mat_<double>(3,1) << Psd.at<double>(0), Psd.at<double>(1), Psd.at<double>(2));
 
           // The point in 2D space
-          Mat uvPoint = (cv::Mat_<double>(3,1) << ContCenterC[i].x, ContCenterC[i].y, 1);
+          Mat uvPoint = contacts.row(i);
           Mat invCMatrix = cameraMatrix.inv();
 
-          // The undistorted 2D space
-          Mat c2Prime = invCMatrix*uvPoint;
 
+          // The undistorted 2D space
+          transpose(uvPoint,uvPoint);
+          Mat c2Prime = invCMatrix*uvPoint;
           double theta = acos(Psd.dot(c2Prime)/(norm(Psd)*norm(c2Prime)));
+
           double firstPart = norm(Psd)*cos(theta);
           double insideSqrt = pow(rd,2)-pow(norm(Psd),2)*pow(sin(theta),2);
 
           // Distance from camera to contact
           double MagSC = firstPart+sqrt(insideSqrt);
 
+
           //Scaling factor to project the undistorted 2D point into 3D space
           double s = MagSC/norm(c2Prime);
 
           // True 3D location of the point detected
-          Mat Ctrue = invCMatrix*uvPoint*s;
-          trueContacts.push_back(Point3d(Ctrue.at<double>(0,0),Ctrue.at<double>(1,0),Ctrue.at<double>(2,0)));
+          Mat Ctrue = c2Prime*s;
+          Mat Trs;
+          //transpose(Tsr,Trs);
+          Trs = Tsr.inv();
+          Mat Ctrue2 = (cv::Mat_<double>(4,1) << Ctrue.at<double>(0), Ctrue.at<double>(1), Ctrue.at<double>(2),1);
 
+          trueContacts.push_back(Point3d(Ctrue));
+
+          //cout << "contacts: " << trueContacts << endl;
+          //cout << Trs << endl;
+          CtrueDome = Trs*Ctrue2;
+          CtrueDome = (cv::Mat_<double>(3,1) << CtrueDome.at<double>(0), CtrueDome.at<double>(1), CtrueDome.at<double>(2));
+          transpose(CtrueDome,CtrueDome);
+          writing = true;
+          write2File(CtrueDome, writing);
+          cout << "Dome Contact: " << CtrueDome << endl;
+          //cout << "norm: " << norm(CtrueDome) << endl;
 
         }
 
-        // If there are contacts, output the true points
-        if (trueContacts.size() > 0)
-          cout << trueContacts << endl << endl;
 
-          
+
+
+        // If there are contacts, output the true points
+        //if (trueContacts.size() > 0)
+
+
+
         // Combine the Red fiducial detection results with the contact results
         Mat totalDrawing;
         add(drawingC,drawingR,totalDrawing);
