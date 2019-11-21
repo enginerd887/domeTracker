@@ -118,9 +118,9 @@ const int maxExposure = 80000;
 const int maxBlack = 20;
 const int maxContact = 255;
 
-double targetExposure = 23000.0;
-double targetBlack = 2;
-double targetContact = 234;
+double targetExposure = 20000.0;
+double targetBlack = -10;
+double targetContact = 220;
 
 int exp_slider = 23000;
 int black_slider = 2;
