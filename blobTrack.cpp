@@ -65,8 +65,8 @@ const int threshMax = 255;
 
 // Slider default values
 int minHue = 10;
-int minHueHigh = 160;
-int maxHueHigh = 180;
+int minHueHigh = 164;
+int maxHueHigh = 185;
 int redThresh = 110;
 
 int rHue_slider = 10;
@@ -362,7 +362,8 @@ int main(int argc, char* argv[])
         vector<Vec4i> hierarchy;
 
         findContours(mask,rContours,hierarchy,CV_RETR_EXTERNAL, CV_CHAIN_APPROX_SIMPLE, Point(0,0) );
-        closeContours(5,mask);
+        //closeContours(5,mask);
+
 
         // Draw contours. Only marking the center points
         drawingR = Mat::zeros( mask.size(), CV_8UC3 );
@@ -394,19 +395,21 @@ int main(int argc, char* argv[])
           circularity = -4*M_PI*(areaR[i]/(perimR[i]*perimR[i]));
 
           // if detected blobs are sufficiently circular and large, keep them
-          if ( circularity > .5 && circularity < 1.3 && -areaR[i] > 5000)
+          if ( -areaR[i] > 4000)
           {
             ContCenterR[i] = Point2f(muR[i].m10/muR[i].m00, muR[i].m01/muR[i].m00);
             pointVals.push_back(Point(ContCenterR[i]));
 
             //Draw centroids
             circle( drawingR, ContCenterR[i], 15, color2, -1, 8, .1);
+            drawContours(drawingR, rContours, i, color, 2, 8, vector<Vec4i>(), 0, Point());
+
             contCount++;
           }
         }
 
-        dilateMat(4,drawingR);
 
+        dilateMat(4,drawingR);
 
         //////////////////// Assign IDs to found red points //////////////////////////
         vector<int> newIDs(contCount);
@@ -579,8 +582,11 @@ int main(int argc, char* argv[])
             putText(drawingR,idVal,pointVals.at(nn),FONT_HERSHEY_DUPLEX,1,color3,2);
           }
         }
+        imshow( "Red Detection", drawingR); //GET RID OF THIS AFTER TESTING
+
 
         //////////// Pose Estimation when 4 points detected///////////////////
+
         if (newIDs.size() == 4)
         {
           vector<int> imageIDs;
@@ -598,13 +604,26 @@ int main(int argc, char* argv[])
 
           // 3D model points.
           std::vector<cv::Point3d> model_points;
-          float ledDistance = 25.00f; // in mm
-          float dFrameOffset = 5.00f; // in mm. Offset from reference plane to dome center of curvature
+          float ledDistance = 16.00f; // in mm
+          float ledR = 11.314f; // radius from center
+          float dFrameOffset = 0.00f; // in mm. Offset from reference plane to dome center of curvature
           //As written, these points set the origin of the dome frame at the center of its base
+          //model_points.push_back(cv::Point3d(-ledR,0,dFrameOffset));
           model_points.push_back(cv::Point3d(-ledDistance/2, -ledDistance/2, dFrameOffset));
           model_points.push_back(cv::Point3d(ledDistance/2,-ledDistance/2, dFrameOffset));
-          model_points.push_back(cv::Point3d(-ledDistance/2, ledDistance/2, dFrameOffset));
-          model_points.push_back(cv::Point3d(ledDistance/2,ledDistance/2,dFrameOffset));
+          //model_points.push_back(cv::Point3d(ledR,0,dFrameOffset));
+          //model_points.push_back(cv::Point3d(-ledR,0,dFrameOffset));
+          model_points.push_back(cv::Point3d(ledDistance/2, ledDistance/2, dFrameOffset));
+          model_points.push_back(cv::Point3d(-ledDistance/2,ledDistance/2,dFrameOffset));
+          //model_points.push_back(cv::Point3d(0,ledR,dFrameOffset));
+
+          /*
+          std::vector<cv::Point3d> seen_model_points;
+          for (int ll=0;ll<newIDs.size();ll++){
+            seen_model_points.push_back(model_points[newIDs[ll]]);
+          }
+          */
+
 
 
 
@@ -670,6 +689,7 @@ int main(int argc, char* argv[])
         bitwise_not(filtered,filtered);
         floodFill(filtered,cv::Point(0,0),Scalar(0));
 
+
         findContours(filtered,contours,hierarchy,CV_RETR_TREE, CV_CHAIN_APPROX_SIMPLE, Point(0,0) );
 
         /// Draw contours
@@ -710,6 +730,7 @@ int main(int argc, char* argv[])
 
         circle( drawing2, ContCenter, 15, color2, -1, 8, 0 );
 
+
 				//opticalflow
 				vector<uchar> status;
 				vector<float> err;
@@ -719,9 +740,12 @@ int main(int argc, char* argv[])
         // Overlay the mask on the original image to focus only on the center
         undistorted.copyTo(drawing2,drawing);
 
+
         ///////////////// Now try to find contacts from this image //////////
         cvtColor(drawing2,drawing2,CV_BGR2GRAY);
+
         threshold(drawing2,drawing2,targetContact,255,0);
+
         GaussianBlur(drawing2,drawing2,Size(7,7),0,0);
         GaussianBlur(drawing2,drawing2,Size(7,7),0,0);
         Canny(drawing2,drawing2,0,255,3,true);
@@ -758,18 +782,20 @@ int main(int argc, char* argv[])
 
           double circularityC = -4*M_PI*(areaC[i]/(perimC[i]*perimC[i]));
 
-          if (-areaC[i] > 500 && circularityC > .5 && circularityC < 1.3)
+          if (-areaC[i] > 500)
           {
             //drawContours( drawingC, contactContours, i, color2, 3, 8, hierarchy, 0, Point() );
             circle( drawingC, ContCenterC[i], 4, color3, -1, 8, 0);
             circle( drawingC, centers[i], (int)radius[i], color2, 3 );
             ContCenterReal.push_back(Point2f(ContCenterC[i]));
+            drawContours(drawingC, contactContours, i, color, 2, 8, vector<Vec4i>(), 0, Point());
 
             //cout << endl << endl;
 
           }
         }
 
+/*
         /// Determine 3D position of contacts from 2D image contacts detected ///
         vector<Point3d> trueContacts;
         vector<Point2f> undistortedConts;
@@ -879,7 +905,7 @@ int main(int argc, char* argv[])
           //cout << "norm: " << norm(CtrueDome) << endl;
 
         }
-
+*/
 
 
 
@@ -947,9 +973,9 @@ static void on_trackbarRed( int, void* )
 
    GaussianBlur(mask,mask,Size(7,7),0,0);
    medianBlur(mask,mask,5);
-   medianBlur(mask,mask,5);
 
-   dilateMat(20,mask);
+   dilateMat(5,mask);
+
    threshold(mask,mask,redThresh,255,0);
 
    createTrackbar( rMinHigh, "Red Detection", &rHueHighMin_slider, maxHueHigh, on_trackbarRed );
