@@ -395,7 +395,7 @@ int main(int argc, char* argv[])
           circularity = -4*M_PI*(areaR[i]/(perimR[i]*perimR[i]));
 
           // if detected blobs are sufficiently circular and large, keep them
-          if ( -areaR[i] > 4000)
+          if ( -areaR[i] > 750)
           {
             ContCenterR[i] = Point2f(muR[i].m10/muR[i].m00, muR[i].m01/muR[i].m00);
             pointVals.push_back(Point(ContCenterR[i]));
@@ -587,7 +587,7 @@ int main(int argc, char* argv[])
 
         //////////// Pose Estimation when 4 points detected///////////////////
 
-        if (newIDs.size() == 4)
+        if (newIDs.size() >= 4)
         {
           vector<int> imageIDs;
           std::vector<cv::Point2d> image_points;
@@ -608,28 +608,28 @@ int main(int argc, char* argv[])
           float ledR = 11.314f; // radius from center
           float dFrameOffset = 0.00f; // in mm. Offset from reference plane to dome center of curvature
           //As written, these points set the origin of the dome frame at the center of its base
-          //model_points.push_back(cv::Point3d(-ledR,0,dFrameOffset));
+          model_points.push_back(cv::Point3d(-ledR,0,dFrameOffset));
           model_points.push_back(cv::Point3d(-ledDistance/2, -ledDistance/2, dFrameOffset));
           model_points.push_back(cv::Point3d(ledDistance/2,-ledDistance/2, dFrameOffset));
-          //model_points.push_back(cv::Point3d(ledR,0,dFrameOffset));
-          //model_points.push_back(cv::Point3d(-ledR,0,dFrameOffset));
+          model_points.push_back(cv::Point3d(ledR,0,dFrameOffset));
+          model_points.push_back(cv::Point3d(-ledR,0,dFrameOffset));
           model_points.push_back(cv::Point3d(ledDistance/2, ledDistance/2, dFrameOffset));
           model_points.push_back(cv::Point3d(-ledDistance/2,ledDistance/2,dFrameOffset));
-          //model_points.push_back(cv::Point3d(0,ledR,dFrameOffset));
+          model_points.push_back(cv::Point3d(0,ledR,dFrameOffset));
 
-          /*
+
           std::vector<cv::Point3d> seen_model_points;
           for (int ll=0;ll<newIDs.size();ll++){
             seen_model_points.push_back(model_points[newIDs[ll]]);
           }
-          */
+
 
 
 
 
 
           // Solve for pose, returns a rotation vector and translation vector
-          cv::solvePnP(model_points, image_points, cameraMatrix, distanceCoefficients, rotation_vector, translation_vector);
+          cv::solvePnP(seen_model_points, image_points, cameraMatrix, distanceCoefficients, rotation_vector, translation_vector);
 
           // Convert the rotation vector to a rotation matrix for transformation
           Rodrigues(rotation_vector,rotationMatrix);
