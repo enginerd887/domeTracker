@@ -587,7 +587,7 @@ int main(int argc, char* argv[])
 
         //////////// Pose Estimation when 4 points detected///////////////////
 
-        if (newIDs.size() >= 4)
+        if (newIDs.size() == 4)
         {
           vector<int> imageIDs;
           std::vector<cv::Point2d> image_points;
@@ -609,12 +609,12 @@ int main(int argc, char* argv[])
           float dFrameOffset = 0.00f; // in mm. Offset from reference plane to dome center of curvature
           //As written, these points set the origin of the dome frame at the center of its base
           model_points.push_back(cv::Point3d(-ledR,0,dFrameOffset));
-          model_points.push_back(cv::Point3d(-ledDistance/2, -ledDistance/2, dFrameOffset));
-          model_points.push_back(cv::Point3d(ledDistance/2,-ledDistance/2, dFrameOffset));
+          //model_points.push_back(cv::Point3d(-ledDistance/2, -ledDistance/2, dFrameOffset));
+          //model_points.push_back(cv::Point3d(ledDistance/2,-ledDistance/2, dFrameOffset));
           model_points.push_back(cv::Point3d(ledR,0,dFrameOffset));
           model_points.push_back(cv::Point3d(-ledR,0,dFrameOffset));
-          model_points.push_back(cv::Point3d(ledDistance/2, ledDistance/2, dFrameOffset));
-          model_points.push_back(cv::Point3d(-ledDistance/2,ledDistance/2,dFrameOffset));
+          //model_points.push_back(cv::Point3d(ledDistance/2, ledDistance/2, dFrameOffset));
+          //model_points.push_back(cv::Point3d(-ledDistance/2,ledDistance/2,dFrameOffset));
           model_points.push_back(cv::Point3d(0,ledR,dFrameOffset));
 
 
@@ -629,7 +629,7 @@ int main(int argc, char* argv[])
 
 
           // Solve for pose, returns a rotation vector and translation vector
-          cv::solvePnP(seen_model_points, image_points, cameraMatrix, distanceCoefficients, rotation_vector, translation_vector);
+          cv::solvePnP(model_points, image_points, cameraMatrix, distanceCoefficients, rotation_vector, translation_vector);
 
           // Convert the rotation vector to a rotation matrix for transformation
           Rodrigues(rotation_vector,rotationMatrix);
