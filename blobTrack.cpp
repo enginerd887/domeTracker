@@ -4,7 +4,7 @@
 Tito Fernandez
 Lynch Lab, Northwestern University
 Fingertip Force Sensor Project
-
+Last modified 2-20-20 @ 11:30 AM
 This code accomplishes the following tasks:
 
 * Reads a Pylon-based camera (Basler Dart daA1600-60uc in this case)
