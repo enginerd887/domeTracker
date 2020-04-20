@@ -40,7 +40,7 @@ This script is based on the Pylon_with_OpenCV example available online.
 #include <chrono>
 #include <cstdint>
 #include <ctime>
-
+#include <sys/time.h>
 
 // Include files to use the PYLON API.
 #include <pylon/PylonIncludes.h>
@@ -73,6 +73,9 @@ using namespace tbb;
 volatile bool done = false;
 
 ////////////////////////// All different frame holders /////////////////////////
+
+struct timeval tv, tstart;
+double startTime, currentTime, diffTime;
 
 Mat undistorted;
 Mat red;
@@ -244,6 +247,10 @@ class find_fiducials
             inRange(retVal, cv::Scalar(150, 160,160), cv::Scalar(185, 255,255), upper_red_hue_range);
             addWeighted(lower_red_hue_range, 1.0, upper_red_hue_range, 1.0, 0.0, retVal);
 
+            gettimeofday(&tv, NULL);
+            currentTime = (tv.tv_sec)*1000+(tv.tv_usec)/1000;
+            diffTime = currentTime-startTime;
+            //cout << "Found Red Fiducials: " << diffTime << endl;
             GaussianBlur(retVal,retVal,Size(7,7),0,0);
             dilateMat(3,retVal);
 
@@ -292,6 +299,10 @@ class find_fiducials
               }
             }
 
+            gettimeofday(&tv, NULL);
+            currentTime = (tv.tv_sec)*1000+(tv.tv_usec)/1000;
+            diffTime = currentTime-startTime;
+            //cout << "Identified Red Contours: " << diffTime << endl;
             //////////////////// Assign IDs to found red points //////////////////////////
 
             vector<int> newIDs(contCount);
@@ -458,6 +469,11 @@ class find_fiducials
                 putText(drawingR,idVal,pointVals.at(nn),FONT_HERSHEY_DUPLEX,1,color3,2);
               }
             }
+
+            gettimeofday(&tv, NULL);
+            currentTime = (tv.tv_sec)*1000+(tv.tv_usec)/1000;
+            diffTime = currentTime-startTime;
+            //cout << "Assigned Fiducial IDs: " << diffTime << endl;
             //////////// Pose Estimation when 4 or more points detected///////////////
 
             if (newIDs.size() >= 4)
@@ -536,6 +552,10 @@ class find_fiducials
 
             }
 
+            gettimeofday(&tv, NULL);
+            currentTime = (tv.tv_sec)*1000+(tv.tv_usec)/1000;
+            diffTime = currentTime-startTime;
+            //cout << "Pose Estimation Complete: " << diffTime << endl;
             retVal = drawingR;
 
 
@@ -567,6 +587,11 @@ class find_fiducials
 
               inRange(retVal, cv::Scalar(90,205,255), cv::Scalar(102,255,255),retVal);
 
+
+              gettimeofday(&tv, NULL);
+              currentTime = (tv.tv_sec)*1000+(tv.tv_usec)/1000;
+              diffTime = currentTime-startTime;
+              //cout << "Isolated Contacts: " << diffTime << endl;
               dilateMat(3,retVal);
 
               blueArea = img+img*.1;
@@ -574,6 +599,10 @@ class find_fiducials
 
               inRange(blueArea, cv::Scalar(70,40,40), cv::Scalar(120, 255,255),contact);
 
+              gettimeofday(&tv, NULL);
+              currentTime = (tv.tv_sec)*1000+(tv.tv_usec)/1000;
+              diffTime = currentTime-startTime;
+              //cout << "Isolated Blue Center Region: " << diffTime << endl;
               GaussianBlur(contact,contact,Size(3,3),0,0);
 
               vector<vector<Point> > contactContours;
@@ -625,6 +654,12 @@ class find_fiducials
                 }
               }
 
+              gettimeofday(&tv, NULL);
+              currentTime = (tv.tv_sec)*1000+(tv.tv_usec)/1000;
+              diffTime = currentTime-startTime;
+              //cout << "Identified central contours: " << diffTime << endl;
+
+
               for( int i = 0; i< contactContours.size(); i++ )
               {
                 muC[i] = moments(contactContours[i],false);
@@ -641,6 +676,11 @@ class find_fiducials
 
                 }
               }
+
+              gettimeofday(&tv, NULL);
+              currentTime = (tv.tv_sec)*1000+(tv.tv_usec)/1000;
+              diffTime = currentTime-startTime;
+              //cout << "Contacts drawn on image: " << diffTime << endl;
 
 
                 /// Determine 3D position of contacts from 2D image contacts detected ///
@@ -739,11 +779,16 @@ class find_fiducials
                   transpose(CtrueDome,CtrueDome);
                   //writing = true;
                   //write2File(CtrueDome, true);
-                  cout << "Dome Contact: " << CtrueDome << endl;
+                  //cout << "Dome Contact: " << CtrueDome << endl;
 
 
                 }
 
+                gettimeofday(&tv, NULL);
+                currentTime = (tv.tv_sec)*1000+(tv.tv_usec)/1000;
+                diffTime = currentTime-startTime;
+                //
+                //cout << "True contact location calculated: " << diffTime << endl;
                 retVal = drawingC;
 
             }
@@ -840,6 +885,8 @@ int main(int argc, char* argv[])
         // Start the grabbing of c_countOfImagesToGrab images.
         // The camera device is parameterized with a default configuration which
         // sets up free-running continuous acquisition.
+        gettimeofday(&tstart, NULL);
+        startTime = (tstart.tv_sec)*1000+(tstart.tv_usec)/1000;
 		camera.StartGrabbing(GrabStrategy_LatestImages);
 
         // This smart pointer will receive the grab result data.
@@ -851,6 +898,11 @@ int main(int argc, char* argv[])
         while ( camera.IsGrabbing())
         {
           auto start = std::chrono::steady_clock::now();
+          gettimeofday(&tv, NULL);
+          currentTime = (tv.tv_sec)*1000+(tv.tv_usec)/1000;
+          diffTime = currentTime-startTime;
+          //
+          //cout << "Captured a frame: " << diffTime << endl;
 
             // Wait for an image and then retrieve it. A timeout of 5000 ms is used.
             camera.RetrieveResult( 5000, ptrGrabResult, TimeoutHandling_ThrowException);
@@ -906,10 +958,17 @@ int main(int argc, char* argv[])
 
         auto end = std::chrono::steady_clock::now();
         auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
-        cout << "It took me " << elapsed.count()/1000 << " milliseconds." << endl;
 
+        gettimeofday(&tv, NULL);
+        currentTime = (tv.tv_sec)*1000+(tv.tv_usec)/1000;
+        diffTime = currentTime-startTime;
+        //cout << "Program Complete: " << diffTime << endl;
+        //cout << "It took me " << elapsed.count()/1000 << " milliseconds." << endl;
+        int64_t lastBlockId = camera.GetStreamGrabberParams().Statistic_Missed_Frame_Count.GetValue();
+        cout << "Last Block ID: " << lastBlockId << endl;
         write2File(CtrueDome,true,elapsed.count()/1000);
-
+        gettimeofday(&tstart, NULL);
+        startTime = (tstart.tv_sec)*1000+(tstart.tv_usec)/1000;
 				waitKey(1);
 
 
