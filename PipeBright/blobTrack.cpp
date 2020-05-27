@@ -81,17 +81,17 @@ int centerCounter = 0;
 
 Mat CtrueDome;
 
-int touchCounter = 2;
+int touchCounter = 0;
 ////////////////////// Function Definitions /////////////////////////////
 
 // Function for writing to a file
-void write2File(Mat& CtrueDome, bool writing, double elapse) {
+void write2File(Mat& CtrueDome, bool writing) {
   char fileName[50];
   sprintf(fileName,"point%d.txt",touchCounter);
   ofstream myfile;
   myfile.open(fileName, ofstream::app);
 
-  myfile << elapse << '\n';
+  myfile << CtrueDome << '\n';
   myfile.close();
 }
 
@@ -290,7 +290,7 @@ int main( int argc, const char** argv )
               totalTime = totalTime + resTime;
               double avgTime = totalTime/cycleCount;
               cycleCount++;
-              cout << "FrameRate: " << 1/(avgTime/1000) << endl;
+              //cout << "FrameRate: " << 1/(avgTime/1000) << endl;
               clock_gettime(CLOCK_MONOTONIC, &resStart);
 
               //imshow("Red Value",red);
@@ -301,7 +301,7 @@ int main( int argc, const char** argv )
             //  resTime = ((double)resEnd.tv_sec*SEC2MILLISEC + (double)resEnd.tv_nsec/MILLISEC2NANOSEC) - ((double)resStart.tv_sec*SEC2MILLISEC + (double)resStart.tv_nsec/MILLISEC2NANOSEC);
 
               //cout << "Program Complete: " << resTime << endl;
-              //write2File(CtrueDome,true,resTime);
+
               //clock_gettime(CLOCK_MONOTONIC, &resStart);
               delete pData;
               pData = 0;
@@ -749,7 +749,7 @@ void detectAndDrawTBB( Camera_t &camera,CGrabResultPtr ptrGrabResult,
 
                             blur(pData->blue,pData->blue,Size(5,5));
 
-                            inRange(pData->blue, cv::Scalar(70,100,100), cv::Scalar(100,255,255),pData->blueMask);
+                            inRange(pData->blue, cv::Scalar(75,100,100), cv::Scalar(90,255,255),pData->blueMask);
                             cvtColor(pData->blue,pData->blue,CV_HSV2BGR);
                             pData->img.copyTo(pData->blueIso, pData->blueMask);
 
@@ -786,7 +786,7 @@ void detectAndDrawTBB( Camera_t &camera,CGrabResultPtr ptrGrabResult,
                                 {
                                   ContCenterReal.push_back(Point2f(ContCenterC[i]));
                                   drawContours(drawingC, contactContours, i, color2, 2, 8, vector<Vec4i>(), 0, Point());
-                                  drawMarker(drawingC, centers[i],color3,MARKER_STAR,30,2);
+                                  drawMarker(drawingC, centers[i],color3,MARKER_CROSS,10,2);
                                   //circle(drawingC,centers[i],(int)radius[i],color4,2,8,0);
 
                                 }
@@ -889,6 +889,8 @@ void detectAndDrawTBB( Camera_t &camera,CGrabResultPtr ptrGrabResult,
                                 CtrueDome = Trs*Ctrue2;
                                 CtrueDome = (cv::Mat_<double>(3,1) << CtrueDome.at<double>(0), CtrueDome.at<double>(1), CtrueDome.at<double>(2));
                                 transpose(CtrueDome,CtrueDome);
+                                cout << CtrueDome << endl;
+                                write2File(CtrueDome,true);
                                 //writing = true;
                                 //write2File(CtrueDome, true);
                                 //cout << "Dome Contact: " << CtrueDome << endl;
